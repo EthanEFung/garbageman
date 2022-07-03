@@ -18,30 +18,30 @@ import (
 
 var from string
 
-type Publisher struct {
+type publisher struct {
 	*fsnotify.Watcher
-	subscribers map[Subscriber]bool
+	subscribers map[subscriber]bool
 }
-func (p *Publisher) Subscribe(s Subscriber) {
+func (p *publisher) subscribe(s subscriber) {
 	p.subscribers[s] = true
 }
-func (p *Publisher) Unsubscribe(s Subscriber) {
+func (p *publisher) unsubscribe(s subscriber) {
 	delete(p.subscribers, s)
 }
-func (p *Publisher) Notify(e fsnotify.Event) {
+func (p *publisher) notify(e fsnotify.Event) {
 	for sub, ok := range p.subscribers {
 		if !ok {
 			delete(p.subscribers, sub)
 			return
 		}
-		sub.Update(e)
+		sub.update(e)
 	}
 }
-func (p *Publisher) Serve() {
+func (p *publisher) serve() {
 	for {
 		select {
 		case event := <-p.Events:
-			p.Notify(event)
+			p.notify(event)
 		case err := <-p.Errors:
 			if err != nil {
 				log.Printf("Watcher Error: %v\n", err)
@@ -50,25 +50,25 @@ func (p *Publisher) Serve() {
 		}
 	}
 }
-func createPublisher() *Publisher {
+func createPublisher() *publisher {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatalf("Cannot create watcher: %v\n", err)
 	}
-	return &Publisher{
+	return &publisher{
 		Watcher:     watcher,
-		subscribers: make(map[Subscriber]bool),
+		subscribers: make(map[subscriber]bool),
 	}
 }
 
-type Subscriber interface {
-	Update(event fsnotify.Event)
+type subscriber interface {
+	update(event fsnotify.Event)
 }
-/* Service implements the Subscriber Interface */
-type Service struct {
+/* service implements the Subscriber Interface */
+type service struct {
 	from string
 }
-func (s Service) Update(e fsnotify.Event) {
+func (s service) update(e fsnotify.Event) {
 	r := regexp.MustCompile(`.*/\..*`)
 	isDotFile := r.MatchString(e.Name)
 
@@ -101,7 +101,7 @@ func (s Service) Update(e fsnotify.Event) {
 		modified := info.ModTime()
 		if modified.Before(cutoff) {
 			// in other words, the modified time of the file is older than the 10th newest
-			err = MacOSTrash(path)
+			err = macOSTrash(path)
 			return err
 		}
 		return nil
@@ -111,15 +111,15 @@ func (s Service) Update(e fsnotify.Event) {
 		log.Fatalf("error walking the folder: %v", err)
 	}
 }
-func createService(from string) *Service {
-	return &Service{
+func createService(from string) *service {
+	return &service{
 		from: from,
 	}
 }
 
-// MacOSTrash moves a file or folder including its content into the systems trashbin.
+// macOSTrash moves a file or folder including its content into the systems trashbin.
 // The path MUST be an absolute path otherwise the executable will not run
-func MacOSTrash(path string) error {
+func macOSTrash(path string) error {
 	_, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return nil
@@ -146,9 +146,9 @@ func main() {
 	publisher := createPublisher()
 	defer publisher.Close()
 	service := createService(from)
-	publisher.Subscribe(service)
+	publisher.subscribe(service)
 
-	go publisher.Serve()
+	go publisher.serve()
 	publisher.Add(from)
 	log.Println("Watching for changes from", from, "...")
 	<-make(chan bool)
