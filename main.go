@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io/fs"
 	"io/ioutil"
@@ -13,8 +14,9 @@ import (
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/joho/godotenv"
 )
+
+var from string
 
 type Publisher struct {
 	*fsnotify.Watcher
@@ -84,7 +86,7 @@ func (s Service) Update(e fsnotify.Event) {
 		return
 	}
 
-	sort.Slice(files, func (i, j int) bool {
+	sort.Slice(files, func(i, j int) bool {
 		fileA, fileB := files[i], files[j]
 		return fileA.ModTime().After(fileB.ModTime())
 	})
@@ -132,20 +134,22 @@ func MacOSTrash(path string) error {
 	return exec.Command("osascript", "-e", osascriptCommand).Run()
 }
 
+func init() {
+	flag.StringVar(&from, "from", "/Invalid/Path", "the absolute path of the screenshot folder")
+}
+
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Failed to load env: %v\n", err)
+	flag.Parse()
+	if _, err := os.Stat(from); err != nil {
+		log.Fatalf("from path is not reachable. Please pass a valid path to your screenshot directory as the -from flag: %v\n", err)
 	}
-
-	from := os.Getenv("FROM")
-
 	publisher := createPublisher()
+	defer publisher.Close()
 	service := createService(from)
 	publisher.Subscribe(service)
 
 	go publisher.Serve()
 	publisher.Add(from)
-	log.Println("Watching for changes...")
+	log.Println("Watching for changes from", from, "...")
 	<-make(chan bool)
 }
